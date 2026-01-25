@@ -189,9 +189,10 @@ namespace AstralAutoPatch
       AddLog($"최신 한글패치 버전: {release.TagName}");
 
       // 버전을 비교 (둘 중 하나라도 구버전이거나 없으면 업데이트)
-      if (isNewInstall || 
-          UpdateManager.IsNewerVersion(clientVersion, release.TagName) || 
-          UpdateManager.IsNewerVersion(serverVersion, release.TagName))
+      // if (isNewInstall || UpdateManager.IsNewerVersion(clientVersion, release.TagName) || 
+      //     UpdateManager.IsNewerVersion(serverVersion, release.TagName))
+      // {
+      if (true)
       {
         UpdateStatus("한글패치 파일을 다운로드 중입니다...");
 

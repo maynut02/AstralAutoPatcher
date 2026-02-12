@@ -23,19 +23,16 @@ namespace AstralAutoPatch
         if (uriString.StartsWith("astral://", StringComparison.OrdinalIgnoreCase))
         {
           form.IsProtocolLaunch = true;
-          try
+          // URI의 Host 부분을 실행 모드로 사용 (예: astral://patch 또는 astral://delete)
+          try 
           {
-            // URI 파싱을 통해 폴더명을 추출
-            var uri = new Uri(uriString);
-            if (!string.IsNullOrEmpty(uri.Host))
-            {
-              form.TargetGameDataFolder = uri.Host;
-            }
+             var uri = new Uri(uriString);
+             if (!string.IsNullOrEmpty(uri.Host))
+             {
+               form.LaunchMode = uri.Host.ToLower();
+             }
           }
-          catch
-          {
-            // URI 형식이 올바르지 않은 경우 기본값 사용
-          }
+          catch { }
         }
       }
 

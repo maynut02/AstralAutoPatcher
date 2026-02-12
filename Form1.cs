@@ -12,10 +12,9 @@ namespace AstralAutoPatch
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool IsProtocolLaunch { get; set; } = false;
 
-    // URL을 통해 전달받을 수 있는 게임 데이터 폴더명 (기본값 8vJXnINT)
+    // 실행 모드: "patch" (기본값) 또는 "delete"
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-    public string TargetGameDataFolder { get; set; } = "8vJXnINT";
-
+    public string LaunchMode { get; set; } = "patch";
 
     public Form1()
     {
@@ -128,7 +127,8 @@ namespace AstralAutoPatch
           string restartArgs = "";
           if (IsProtocolLaunch)
           {
-             restartArgs = $"astral://{TargetGameDataFolder}";
+             // 업데이트 후 재시작 시에도 원래 실행 모드(patch/delete)를 유지
+             restartArgs = $"astral://{LaunchMode}";
           }
 
           // .exe 파일을 다운로드하여 교체
@@ -136,10 +136,18 @@ namespace AstralAutoPatch
           return;
         }
 
-        // 3. 게임 폴더 내의 version.txt 내용과 깃허브의 최신 태그를 비교
-        UpdateStatus("한글패치 버전을 확인 중입니다...");
-        var latestPatchRelease = await UpdateManager.GetLatestReleaseAsync(UpdateManager.PatchRepoOwner, UpdateManager.PatchRepoName);
-        await CheckAndPatchGameAsync(installPath, latestPatchRelease);
+        // 3. 실행 모드에 따른 분기 처리
+        if (LaunchMode == "delete")
+        {
+          UpdateStatus("한글패치를 삭제하는 중입니다...");
+          await DeletePatchAsync(installPath);
+        }
+        else // 기본값 "patch"
+        {
+          UpdateStatus("한글패치 버전을 확인 중입니다...");
+          var latestPatchRelease = await UpdateManager.GetLatestReleaseAsync(UpdateManager.PatchRepoOwner, UpdateManager.PatchRepoName);
+          await CheckAndPatchGameAsync(installPath, latestPatchRelease);
+        }
 
         UpdateStatus("모든 작업이 완료되었습니다. 창을 닫아 종료해주세요.");
       }
@@ -147,6 +155,53 @@ namespace AstralAutoPatch
       {
         MessageBox.Show($"오류 발생: {ex.Message}\n{ex.StackTrace}", "치명적 오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
       }
+    }
+
+    private async Task DeletePatchAsync(string installPath)
+    {
+      await Task.Run(() =>
+      {
+        try
+        {
+          // 1. feimo 패치 폴더 삭제
+          var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+          var feimoPatchPath = Path.Combine(userProfile, "AppData", "LocalLow", "feimo", "AstralParty_INT", "com.unity.addressables", "AssetBundles");
+          
+          if (Directory.Exists(feimoPatchPath))
+          {
+            AddLog($"패치 폴더 삭제 중: {feimoPatchPath}");
+            Directory.Delete(feimoPatchPath, true);
+            AddLog("feimo 패치 파일이 삭제되었습니다.");
+          }
+          else
+          {
+            AddLog("삭제할 feimo 패치 폴더가 없습니다.");
+          }
+
+          // 2. 8vJXnINT 폴더 삭제 (게임 설치 경로 내)
+          // 주의: 8vJXnINT 폴더 전체를 삭제할지, 혹은 내부의 특정 파일만 삭제할지 결정 필요.
+          // 여기서는 패치로 추가된 8vJXnINT 폴더 전체를 삭제하는 것으로 가정합니다.
+          // 만약 8vJXnINT가 게임 원본 데이터라면 삭제하면 안 됩니다. 
+          // 하지만 이전 로직에서 8vJXnINT를 통째로 덮어씌웠으므로, 패치 삭제 시 해당 폴더를 지우는 것이 맞을 수 있습니다.
+          // 사용자의 요청은 "한글패치 삭제"이므로, 패치로 인해 변경된 사항을 되돌리는 것이 목표입니다.
+          // 8vJXnINT 폴더가 패치로만 생성되는 폴더인지, 원본 게임에도 존재하는지 확인이 필요하지만,
+          // 요청하신 내용은 "feimo/.../AssetBundles 폴더를 삭제하게 만들어줘" 였으므로, 
+          // 명시된 feimo 폴더 삭제 외에 게임 설치 경로 쪽 파일 처리에 대한 명시적 언급은 없었습니다.
+          // 그러나 "한글패치 삭제"라는 맥락상, 게임 설치 폴더에 복사된 8vJXnINT 파일들도 처리하는 것이 좋습니다.
+          // 일단 요청하신 대로 feimo 쪽 AssetBundles 삭제는 구현했고, 
+          // 게임 설치 폴더 쪽(8vJXnINT)은 원본 손상 위험이 있으므로 건드리지 않거나, 
+          // 명확한 지시가 없으므로 feimo 쪽만 삭제하도록 하겠습니다.
+          
+          // (추가) 요청 사항 재확인: "delete는 AppData/.../AssetBundles 폴더를 삭제하게 만들어줘.(한글패치 삭제)"
+          // 따라서 feimo 쪽만 삭제합니다.
+
+        }
+        catch (Exception ex)
+        {
+          AddLog($"삭제 중 오류 발생: {ex.Message}");
+          MessageBox.Show($"삭제 실패: {ex.Message}", "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+      });
     }
 
     private async Task CheckAndPatchGameAsync(string installPath, GitHubRelease? release)
@@ -161,155 +216,115 @@ namespace AstralAutoPatch
       var feimoPath = Path.Combine(userProfile, "AppData", "LocalLow", "feimo");
       var serverVersionFilePath = Path.Combine(feimoPath, "version.txt");
 
-      string clientVersion = "";
-      string serverVersion = "";
-      bool isNewInstall = false;
-
-      if (File.Exists(clientVersionFilePath))
-      {
-        clientVersion = await File.ReadAllTextAsync(clientVersionFilePath);
-      }
-      
-      if (File.Exists(serverVersionFilePath))
-      {
-        serverVersion = await File.ReadAllTextAsync(serverVersionFilePath);
-      }
-
-      if (string.IsNullOrWhiteSpace(clientVersion) && string.IsNullOrWhiteSpace(serverVersion))
-      {
-        isNewInstall = true;
-        AddLog("설치된 한글패치가 없습니다.");
-      }
-      else
-      {
-        AddLog($"설치된 한글패치 버전 (Client): {clientVersion}");
-        AddLog($"설치된 한글패치 버전 (Server): {serverVersion}");
-      }
-
       AddLog($"최신 한글패치 버전: {release.TagName}");
 
-      // 버전을 비교 (둘 중 하나라도 구버전이거나 없으면 업데이트)
-      // if (isNewInstall || UpdateManager.IsNewerVersion(clientVersion, release.TagName) || 
-      //     UpdateManager.IsNewerVersion(serverVersion, release.TagName))
-      // {
-      if (true)
+      UpdateStatus("한글패치 파일을 다운로드 중입니다...");
+
+      // 패치 파일을 찾음
+      var patchAsset = release.Assets.FirstOrDefault(a => a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+      if (patchAsset != null)
       {
-        UpdateStatus("한글패치 파일을 다운로드 중입니다...");
+        AddLog($"패치 파일 발견: {patchAsset.Name}");
+        var tempZipPath = Path.Combine(Path.GetTempPath(), patchAsset.Name);
+        var extractPath = Path.Combine(Path.GetTempPath(), "AstralPatch_Extract");
 
-        // 패치 파일을 찾음
-        var patchAsset = release.Assets.FirstOrDefault(a => a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
-        if (patchAsset != null)
+        var progress = new Progress<int>(percent =>
         {
-          AddLog($"패치 파일 발견: {patchAsset.Name}");
-          var tempZipPath = Path.Combine(Path.GetTempPath(), patchAsset.Name);
-          var extractPath = Path.Combine(Path.GetTempPath(), "AstralPatch_Extract");
+          if (progressBar1.InvokeRequired)
+            progressBar1.Invoke(new Action(() => progressBar1.Value = percent));
+          else
+            progressBar1.Value = percent;
+        });
 
-          var progress = new Progress<int>(percent =>
+        await UpdateManager.DownloadFileAsync(patchAsset.BrowserDownloadUrl, tempZipPath, progress);
+
+        UpdateStatus("한글패치를 적용하는 중입니다...");
+        await Task.Run(() =>
+        {
+          try
           {
-            if (progressBar1.InvokeRequired)
-              progressBar1.Invoke(new Action(() => progressBar1.Value = percent));
-            else
-              progressBar1.Value = percent;
-          });
+            // 임시 폴더를 초기화
+            if (Directory.Exists(extractPath)) Directory.Delete(extractPath, true);
+            Directory.CreateDirectory(extractPath);
 
-          await UpdateManager.DownloadFileAsync(patchAsset.BrowserDownloadUrl, tempZipPath, progress);
+            AddLog("압축을 해제하는 중입니다...");
+            ZipFile.ExtractToDirectory(tempZipPath, extractPath);
 
-          UpdateStatus("한글패치를 적용하는 중입니다...");
-          await Task.Run(() =>
-          {
-            try
+            // 압축 해제된 폴더 구조를 확인
+            string rootPath = extractPath;
+            var directories = Directory.GetDirectories(extractPath);
+            var files = Directory.GetFiles(extractPath);
+
+            // 루트 폴더 감지 (폴더가 하나만 있고 파일이 없으면 진입)
+            if (directories.Length == 1 && files.Length == 0)
             {
-              // 임시 폴더를 초기화
-              if (Directory.Exists(extractPath)) Directory.Delete(extractPath, true);
-              Directory.CreateDirectory(extractPath);
+              rootPath = directories[0];
+              AddLog($"루트 폴더 감지: {Path.GetFileName(rootPath)}");
+            }
 
-              AddLog("압축을 해제하는 중입니다...");
-              ZipFile.ExtractToDirectory(tempZipPath, extractPath);
-
-              // 압축 해제된 폴더 구조를 확인
-              string rootPath = extractPath;
-              var directories = Directory.GetDirectories(extractPath);
-              var files = Directory.GetFiles(extractPath);
-
-              // 루트 폴더 감지
-              if (directories.Length == 1 && files.Length == 0)
-              {
-                rootPath = directories[0];
-                AddLog($"루트 폴더 감지: {Path.GetFileName(rootPath)}");
-              }
-
-              // 1. AstralParty_INT_Data 덮어쓰기
-              var sourceFolder1 = Path.Combine(rootPath, "AstralParty_INT_Data");
-              if (Directory.Exists(sourceFolder1))
-              {
-                AddLog($"AstralParty_INT_Data를 복사하는 중입니다: {sourceFolder1}");
-                var destFolder = Path.Combine(installPath, TargetGameDataFolder, "AstralParty_INT_Data");
-                CopyDirectory(sourceFolder1, destFolder, true);
-              }
-              else
-              {
-                AddLog("경고: AstralParty_INT_Data 폴더를 찾을 수 없습니다.");
-              }
-
-              // 2. AstralParty_INT 덮어쓰기
-              var sourceFolder2 = Path.Combine(rootPath, "AstralParty_INT");
-              if (Directory.Exists(sourceFolder2))
-              {
-                var targetPath2 = Path.Combine(feimoPath, "AstralParty_INT");
-
-                // 대상 폴더가 없으면 상위 폴더까지 생성
-                Directory.CreateDirectory(targetPath2);
-
-                AddLog($"AstralParty_INT를 복사하는 중입니다: {targetPath2}");
-                CopyDirectory(sourceFolder2, targetPath2, true);
-              }
-              else
-              {
-                AddLog("경고: AstralParty_INT 폴더를 찾을 수 없습니다.");
-              }
-
-              // 3. version.txt 덮어쓰기
-              var sourceVersionFile = Path.Combine(rootPath, "version.txt");
-              
-              // feimo 폴더 생성 확인
+            // 1. feimo 폴더 처리 (AppData/LocalLow/feimo)
+            var sourceFeimo = Path.Combine(rootPath, "feimo");
+            if (Directory.Exists(sourceFeimo))
+            {
+              AddLog($"feimo 폴더를 업데이트하는 중입니다...");
+              // feimoPath는 이미 AppData/LocalLow/feimo 를 가리킴
               if (!Directory.Exists(feimoPath)) Directory.CreateDirectory(feimoPath);
-
-              if (File.Exists(sourceVersionFile))
-              {
-                File.Copy(sourceVersionFile, clientVersionFilePath, true);
-                File.Copy(sourceVersionFile, serverVersionFilePath, true);
-              }
-              else
-              {
-                // zip 안에 version.txt가 없으면 태그 이름으로 생성
-                File.WriteAllText(clientVersionFilePath, release.TagName);
-                File.WriteAllText(serverVersionFilePath, release.TagName);
-                AddLog("version.txt 생성 완료");
-              }
-
-              AddLog("한글패치 적용이 완료되었습니다.");
+              CopyDirectory(sourceFeimo, feimoPath, true);
             }
-            catch (Exception ex)
+            else
             {
-              AddLog($"오류 발생: {ex.Message}");
-              MessageBox.Show($"패치 적용 실패: {ex.Message}", "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+              AddLog("경고: 압축 파일 내에 feimo 폴더가 없습니다.");
             }
-            finally
+
+            // 2. 8vJXnINT 폴더 처리 (GameInstallPath/8vJXnINT)
+            var sourceGameData = Path.Combine(rootPath, "8vJXnINT");
+            if (Directory.Exists(sourceGameData))
             {
-              if (File.Exists(tempZipPath)) File.Delete(tempZipPath);
-              if (Directory.Exists(extractPath)) Directory.Delete(extractPath, true);
+              var destGameData = Path.Combine(installPath, "8vJXnINT");
+              AddLog($"8vJXnINT 폴더를 업데이트하는 중입니다...");
+              CopyDirectory(sourceGameData, destGameData, true);
             }
-          });
-        }
-        else
-        {
-          AddLog("릴리즈에 .zip 파일이 없습니다.");
-        }
+            else
+            {
+              AddLog("경고: 압축 파일 내에 8vJXnINT 폴더가 없습니다.");
+            }
+
+            // 3. version.txt 덮어쓰기
+            var sourceVersionFile = Path.Combine(rootPath, "version.txt");
+            
+            // feimo 폴더 생성 확인
+            if (!Directory.Exists(feimoPath)) Directory.CreateDirectory(feimoPath);
+
+            if (File.Exists(sourceVersionFile))
+            {
+              File.Copy(sourceVersionFile, clientVersionFilePath, true);
+              File.Copy(sourceVersionFile, serverVersionFilePath, true);
+            }
+            else
+            {
+              // zip 안에 version.txt가 없으면 태그 이름으로 생성
+              File.WriteAllText(clientVersionFilePath, release.TagName);
+              File.WriteAllText(serverVersionFilePath, release.TagName);
+              AddLog("version.txt 생성 완료");
+            }
+
+            AddLog("한글패치 적용이 완료되었습니다.");
+          }
+          catch (Exception ex)
+          {
+            AddLog($"오류 발생: {ex.Message}");
+            MessageBox.Show($"패치 적용 실패: {ex.Message}", "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+          }
+          finally
+          {
+            if (File.Exists(tempZipPath)) File.Delete(tempZipPath);
+            if (Directory.Exists(extractPath)) Directory.Delete(extractPath, true);
+          }
+        });
       }
       else
       {
-        UpdateStatus("이미 최신 버전입니다.");
-        await Task.Delay(1000);
+        AddLog("릴리즈에 .zip 파일이 없습니다.");
       }
     }
 

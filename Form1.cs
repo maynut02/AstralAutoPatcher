@@ -220,8 +220,11 @@ namespace AstralAutoPatch
 
       UpdateStatus("한글패치 파일을 다운로드 중입니다...");
 
-      // 패치 파일을 찾음
-      var patchAsset = release.Assets.FirstOrDefault(a => a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+      // 패치 파일을 찾음 (Steam-EN 버전 우선 선택)
+      var patchAsset = release.Assets.FirstOrDefault(a => 
+        a.Name.StartsWith("AstralParty-KoPatch-Steam-EN-", StringComparison.OrdinalIgnoreCase) && 
+        a.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase));
+
       if (patchAsset != null)
       {
         AddLog($"패치 파일 발견: {patchAsset.Name}");

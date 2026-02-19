@@ -1,4 +1,4 @@
-namespace AstralAutoPatch
+namespace AstralAutoPatcher
 {
   partial class Form1
   {

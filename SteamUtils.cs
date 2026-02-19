@@ -1,7 +1,7 @@
 using Microsoft.Win32;
 using System.Text.RegularExpressions;
 
-namespace AstralAutoPatch
+namespace AstralAutoPatcher
 {
   public static class SteamUtils
   {

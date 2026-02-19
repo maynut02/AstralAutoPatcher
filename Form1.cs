@@ -5,7 +5,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Threading.Tasks;
 
-namespace AstralAutoPatch
+namespace AstralAutoPatcher
 {
   public partial class Form1 : Form
   {

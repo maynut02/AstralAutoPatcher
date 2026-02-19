@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Net.Http.Headers;
 
-namespace AstralAutoPatch
+namespace AstralAutoPatcher
 {
   public class GitHubRelease
   {
@@ -28,7 +28,7 @@ namespace AstralAutoPatch
   {
     // 프로그램 실행 파일이 저장된 리포지토리
     public const string AppRepoOwner = "maynut02";
-    public const string AppRepoName = "AstralAutoPatch";
+    public const string AppRepoName = "AstralAutoPatcher";
 
     // 한글 패치 파일이 저장된 리포지토리
     public const string PatchRepoOwner = "maynut02";
@@ -49,7 +49,7 @@ namespace AstralAutoPatch
 
     static UpdateManager()
     {
-      _client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("AstralAutoPatch", "1.0"));
+      _client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("AstralAutoPatcher", "1.0"));
     }
 
     public static async Task<GitHubRelease?> GetLatestReleaseAsync(string owner, string repo)

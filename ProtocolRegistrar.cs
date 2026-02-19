@@ -2,7 +2,7 @@ using Microsoft.Win32;
 using System.Diagnostics;
 using System.Reflection;
 
-namespace AstralAutoPatch
+namespace AstralAutoPatcher
 {
   public static class ProtocolRegistrar
   {

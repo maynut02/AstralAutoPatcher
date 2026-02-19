@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>AstralAutoPatcher</AssemblyName>
+    <RootNamespace>AstralAutoPatcher</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     
     <PublishSingleFile>true</PublishSingleFile>

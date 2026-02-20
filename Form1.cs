@@ -265,18 +265,32 @@ namespace AstralAutoPatcher
               AddLog($"루트 폴더 감지: {Path.GetFileName(rootPath)}");
             }
 
-            // 1. feimo 폴더 처리 (AppData/LocalLow/feimo)
-            var sourceFeimo = Path.Combine(rootPath, "feimo");
-            if (Directory.Exists(sourceFeimo))
+            // // 1. feimo 폴더 처리 (AppData/LocalLow/feimo)
+            // var sourceFeimo = Path.Combine(rootPath, "feimo");
+            // if (Directory.Exists(sourceFeimo))
+            // {
+            //   AddLog($"feimo 폴더를 업데이트하는 중입니다...");
+            //   // feimoPath는 이미 AppData/LocalLow/feimo 를 가리킴
+            //   if (!Directory.Exists(feimoPath)) Directory.CreateDirectory(feimoPath);
+            //   CopyDirectory(sourceFeimo, feimoPath, true);
+            // }
+            // else
+            // {
+            //   AddLog("경고: 압축 파일 내에 feimo 폴더가 없습니다.");
+            // }
+
+            // 1. AstralParty_INT 폴더 처리 (AppData/LocalLow/feimo/AstralParty_INT)
+            var sourceAstral = Path.Combine(rootPath, "AstralParty_INT");
+            if (Directory.Exists(sourceAstral))
             {
-              AddLog($"feimo 폴더를 업데이트하는 중입니다...");
-              // feimoPath는 이미 AppData/LocalLow/feimo 를 가리킴
-              if (!Directory.Exists(feimoPath)) Directory.CreateDirectory(feimoPath);
-              CopyDirectory(sourceFeimo, feimoPath, true);
+              AddLog($"AstralParty_INT 폴더를 업데이트하는 중입니다...");
+              var destAstral = Path.Combine(feimoPath, "AstralParty_INT");
+              if (!Directory.Exists(destAstral)) Directory.CreateDirectory(destAstral);
+              CopyDirectory(sourceAstral, destAstral, true);
             }
             else
             {
-              AddLog("경고: 압축 파일 내에 feimo 폴더가 없습니다.");
+              AddLog("경고: 압축 파일 내에 AstralParty_INT 폴더가 없습니다.");
             }
 
             // 2. 8vJXnINT 폴더 처리 (GameInstallPath/8vJXnINT)

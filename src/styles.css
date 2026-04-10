@@ -1,0 +1,404 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@100..900&display=swap');
+
+:root {
+  --color-text-main: #f0f7ff;
+  --color-frame-bg: rgba(220, 220, 220, 0.5);
+  --color-frame-border: rgba(0, 0, 0, 0.1);
+  --color-surface-bg: rgb(44, 44, 44);
+  --color-shadow-primary: rgba(0, 0, 0, 0.18);
+  --color-shadow-secondary: rgba(0, 0, 0, 0.32);
+  --color-control-hover: rgba(255, 255, 255, 0.12);
+  --color-control-danger-hover: #d94343;
+  --color-progress-track: rgba(255, 255, 255, 0.16);
+  --color-log-muted: #999;
+  --color-success: #7cf7ab;
+  --color-error: #ff8f8f;
+  --color-white: #fff;
+  --color-black: #000;
+
+  --radius-frame: 24px;
+  --radius-surface: 20px;
+  --radius-full: 100%;
+  --radius-pill: 10px;
+  --size-control: 40px;
+  --size-control-icon: 20px;
+  --size-progress: 180px;
+  --size-progress-stroke: 18;
+  --size-progress-inner-inset: 14px;
+
+  font-family: "Noto Sans KR", sans-serif;
+  font-weight: 400;
+  color: var(--color-text-main);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0 1px 1px 0;
+  background: transparent;
+}
+
+main {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  padding: 10px;
+  flex-direction: column;
+  background: var(--color-frame-bg);
+  border: 1px solid var(--color-frame-border);
+  border-radius: var(--radius-frame);
+  overflow: hidden;
+}
+
+.app-surface {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  background: var(--color-surface-bg);
+  border-radius: var(--radius-surface);
+  box-shadow: 0 3px 6px var(--color-shadow-primary), 0 3px 6px var(--color-shadow-secondary);
+  overflow: hidden;
+}
+
+.app-titlebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  padding: 24px 24px 0 24px;
+}
+
+.app-titlebar__title {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  font-size: 16px;
+  font-weight: 500;
+  user-select: none;
+}
+
+.app-titlebar__badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.app-titlebar__badge {
+  display: flex;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-black);
+  background: var(--color-white);
+  border-radius: var(--radius-pill);
+}
+
+.app-titlebar__controls {
+  display: flex;
+  gap: 8px;
+}
+
+.app-titlebar__control {
+  width: var(--size-control);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-main);
+  background: transparent;
+  aspect-ratio: 1;
+  border-radius: var(--radius-full);
+  transition: background-color 0.2s ease;
+}
+
+.app-titlebar__control > svg {
+  width: var(--size-control-icon);
+  aspect-ratio: 1;
+  stroke-width: 3;
+}
+
+.app-titlebar__control:hover {
+  background: var(--color-control-hover);
+}
+
+.app-titlebar__control--danger:hover {
+  background: var(--color-control-danger-hover);
+}
+
+.app-layout {
+  display: flex;
+  flex: 1;
+  padding: 92px 20px 40px 40px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.app-progress {
+  display: flex;
+  align-items: center;
+}
+
+.progress-ring {
+  width: var(--size-progress);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  position: relative;
+  border-radius: 50%;
+}
+
+.progress-ring::before {
+  content: "";
+  position: absolute;
+  inset: var(--size-progress-inner-inset);
+  border-radius: 50%;
+  background: var(--color-surface-bg);
+  /* box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); */
+}
+
+.progress-ring__svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.progress-ring__track,
+.progress-ring__bar {
+  fill: none;
+  stroke-width: var(--size-progress-stroke);
+}
+
+.progress-ring__track {
+  stroke: var(--color-progress-track);
+}
+
+.progress-ring__bar {
+  stroke: var(--color-white);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.45s ease;
+}
+
+.progress-ring__inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.progress-ring__value {
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.progress-ring__status-icon {
+  --status-icon-size: 80px;
+  width: var(--status-icon-size);
+  height: var(--status-icon-size);
+  display: block;
+  stroke-width: 4;
+}
+
+.progress-ring--success .progress-ring__bar {
+  stroke: var(--color-success);
+}
+
+.progress-ring--error .progress-ring__bar {
+  stroke: var(--color-error);
+}
+
+.progress-ring--success .progress-ring__value,
+.progress-ring--error .progress-ring__value {
+  font-size: 56px;
+  line-height: 1;
+}
+
+.progress-ring--success .progress-ring__value {
+  color: var(--color-success);
+}
+
+.progress-ring--error .progress-ring__value {
+  color: var(--color-error);
+}
+
+.progress-ring__caption {
+  font-size: 12px;
+  color: rgba(240, 247, 255, 0.7);
+}
+
+.app-log-list {
+  display: flex;
+  flex: 1;
+  margin-left: 44px;
+  flex-direction: column;
+  /* justify-content: space-around; */
+  justify-content: flex-start;
+  gap: 20px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 20px;
+}
+
+.app-log-list::-webkit-scrollbar {
+  width: 4px;  
+}
+
+.app-log-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 10px;
+  transition: background-color 0.5s ease-in-out;
+}
+
+.app-log-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.app-log-list::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0);
+}
+
+.app-log-list__item {
+  display: flex;
+  gap: 14px;
+  font-size: 14px;
+  align-items: center;
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transform: translateY(14px);
+  pointer-events: none;
+  transition: opacity 0.35s ease, transform 0.35s ease, max-height 0.35s ease;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.app-log-list__text {
+  display: flex;
+  color: var(--color-log-muted);
+  flex-direction: column;
+  min-width: 0;
+}
+
+.app-log-list__item > svg {
+  width: 20px;
+  stroke: var(--color-log-muted);
+  aspect-ratio: 1;
+  flex-shrink: 0;
+}
+
+.app-log-list__item--visible {
+  opacity: 1;
+  max-height: 1000px;
+  overflow: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.app-log-list__item--done .app-log-list__text,
+.app-log-list__item--current .app-log-list__text {
+  color: var(--color-white);
+}
+
+.app-log-list__item--done > svg,
+.app-log-list__item--current > svg {
+  stroke: var(--color-white);
+}
+
+.app-log-list__item--error .app-log-list__text {
+  color: var(--color-error);
+}
+
+.app-log-list__item--error > svg {
+  stroke: var(--color-error);
+}
+
+.app-log-list__item--current .lucide-loader {
+  transform-origin: center;
+  animation: log-loader-spin 3s linear infinite;
+}
+
+.app-log-list__title {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.app-log-list__meta {
+  font-size: 12px;
+  opacity: 0.5;
+  text-wrap: pretty;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+.ui-tooltip {
+  position: relative;
+  /* display: block; */
+}
+
+.ui-tooltip .ui-tooltip__text {
+  visibility: hidden;
+  z-index: 1;
+  position: absolute;
+  padding: 4px 12px;
+  text-align: center;
+  text-wrap: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-black);
+  border-radius: 20px;
+  background-color: rgba(255, 255, 255, 1);
+}
+
+.ui-tooltip:hover .ui-tooltip__text {
+  visibility: visible;
+}
+
+.ui-tooltip .ui-tooltip__text--bottom {
+  top: 150%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.ui-tooltip .ui-tooltip__text--bottom::after {
+  bottom: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-color: transparent transparent black transparent;
+}
+
+@keyframes log-loader-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}

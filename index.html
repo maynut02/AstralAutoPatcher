@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AstralAutoPatcher</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+
+  <body>
+    <main>
+      <div class="app-surface">
+        <header class="app-titlebar" data-tauri-drag-region>
+          <div class="app-titlebar__title">
+            아스트랄 파티 한글패치
+            <span class="app-titlebar__badges">
+              <span class="app-titlebar__badge">패치 모드</span>
+            </span>
+          </div>
+          <div class="app-titlebar__controls" role="toolbar" aria-label="Window controls">
+            <button id="window-minimize" class="app-titlebar__control ui-tooltip" type="button" aria-label="Minimize window">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-minus-icon lucide-minus"><path d="M5 12h14"/></svg>
+              <span class="ui-tooltip__text ui-tooltip__text--bottom">최소화</span>
+            </button>
+            <button id="window-close" class="app-titlebar__control app-titlebar__control--danger ui-tooltip" type="button" aria-label="Close window">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x-icon lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              <span class="ui-tooltip__text ui-tooltip__text--bottom">닫기</span>
+            </button>
+          </div>
+        </header>
+    
+        <div class="app-layout">
+          <div class="app-progress">
+            <div
+              class="progress-ring"
+              role="progressbar"
+              aria-label="패치 진행률"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+              data-progress="0"
+            >
+              <svg class="progress-ring__svg" viewBox="0 0 200 200" aria-hidden="true">
+                <circle class="progress-ring__track" cx="100" cy="100" r="90"></circle>
+                <circle class="progress-ring__bar" cx="100" cy="100" r="90"></circle>
+              </svg>
+              <div class="progress-ring__inner">
+                <strong class="progress-ring__value">0%</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="app-log-list" role="log" aria-live="polite" aria-label="패치 진행 로그"></div>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

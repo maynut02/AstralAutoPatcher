@@ -1,0 +1,172 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Optional. Release version to use (e.g. 2.0.0)
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-upload:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve release tag
+        id: tag
+        shell: pwsh
+        run: |
+          $manual = "${{ github.event.inputs.version }}".Trim()
+
+          function Parse-SemVer([string]$tagValue) {
+            if ($tagValue -match '^[vV]?(\d+)\.(\d+)\.(\d+)$') {
+              return [pscustomobject]@{
+                Original = $tagValue
+                Prefix = $(if ($tagValue.StartsWith('v') -or $tagValue.StartsWith('V')) { 'v' } else { '' })
+                Major = [int]$Matches[1]
+                Minor = [int]$Matches[2]
+                Patch = [int]$Matches[3]
+              }
+            }
+
+            return $null
+          }
+
+          if (-not [string]::IsNullOrWhiteSpace($manual)) {
+            $manualParsed = Parse-SemVer $manual
+            if (-not $manualParsed) {
+              throw "Invalid version input: '$manual'. Expected format: 2.1.0 or v2.1.0"
+            }
+
+            $tag = "{0}{1}.{2}.{3}" -f $manualParsed.Prefix, $manualParsed.Major, $manualParsed.Minor, $manualParsed.Patch
+          } else {
+            git fetch --tags --force
+
+            $parsedTags = @()
+            $allTags = git tag --list
+            foreach ($tagValue in $allTags) {
+              $parsed = Parse-SemVer $tagValue
+              if ($parsed) {
+                $parsedTags += $parsed
+              }
+            }
+
+            if ($parsedTags.Count -eq 0) {
+              $tag = "0.1.0"
+            } else {
+              $latest = $parsedTags | Sort-Object -Property Major, Minor, Patch -Descending | Select-Object -First 1
+              $nextPatch = $latest.Patch + 1
+              $tag = "{0}{1}.{2}.{3}" -f $latest.Prefix, $latest.Major, $latest.Minor, $nextPatch
+            }
+          }
+
+          $exists = (git tag --list $tag)
+          if (-not [string]::IsNullOrWhiteSpace($exists)) {
+            throw "Tag '$tag' already exists."
+          }
+
+          "tag_name=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Sync app version from tag
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.tag.outputs.tag_name }}"
+          $version = $tag -replace '^[vV]', ''
+
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Resolved tag '$tag' is not a valid SemVer tag for app versioning."
+          }
+
+          $tauriConfigPath = "src-tauri/tauri.conf.json"
+          $tauriConfig = Get-Content -Raw $tauriConfigPath | ConvertFrom-Json
+          $tauriConfig.version = $version
+          $tauriConfig | ConvertTo-Json -Depth 100 | Set-Content -Path $tauriConfigPath -Encoding utf8
+
+          $packageJsonPath = "package.json"
+          $packageJson = Get-Content -Raw $packageJsonPath | ConvertFrom-Json
+          $packageJson.version = $version
+          $packageJson | ConvertTo-Json -Depth 100 | Set-Content -Path $packageJsonPath -Encoding utf8
+
+          $cargoTomlPath = "src-tauri/Cargo.toml"
+          $cargoToml = Get-Content -Raw $cargoTomlPath
+          $cargoTomlUpdated = [regex]::Replace(
+            $cargoToml,
+            '(?ms)(^\[package\][\s\S]*?^version\s*=\s*")([^"]+)(")',
+            {
+              param($m)
+              $m.Groups[1].Value + $version + $m.Groups[3].Value
+            }
+          )
+
+          if ($cargoToml -eq $cargoTomlUpdated) {
+            throw "Failed to update version in src-tauri/Cargo.toml"
+          }
+
+          Set-Content -Path $cargoTomlPath -Value $cargoTomlUpdated -Encoding utf8
+          Write-Host "Synced app version to $version from tag $tag"
+
+      - name: Build Tauri executable
+        run: npm run tauri build -- --no-bundle
+
+      - name: Prepare release asset
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "src-tauri/target/release/astralautopatcher.exe",
+            "src-tauri/target/release/astralautopatcherv2.exe"
+          )
+
+          $source = $null
+          foreach ($candidate in $candidates) {
+            if (Test-Path $candidate) {
+              $source = $candidate
+              break
+            }
+          }
+
+          if (-not $source) {
+            throw "Built executable not found."
+          }
+
+          New-Item -ItemType Directory -Path dist-artifacts -Force | Out-Null
+          Copy-Item $source "dist-artifacts/AstralAutoPatcher.exe" -Force
+
+      - name: Create and push tag
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.tag.outputs.tag_name }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag $tag
+          git push origin $tag
+
+      - name: Upload executable to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          name: ${{ steps.tag.outputs.tag_name }}
+          generate_release_notes: true
+          files: dist-artifacts/AstralAutoPatcher.exe
+          fail_on_unmatched_files: true
+          overwrite_files: true

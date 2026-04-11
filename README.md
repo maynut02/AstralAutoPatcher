@@ -85,10 +85,10 @@
 
 ## 사용 방법
 
-1. Releases에서 최신 [AstralAutoPatcher.exe](https://github.com/maynut02/AstralAutoPatcher/releases/download/2.0.0/AstralAutoPatcher.exe) 다운로드
+1. [최신 Release](https://github.com/maynut02/AstralAutoPatcher/releases/latest)에서 AstralAutoPatcher.exe 다운로드
 2. AstralAutoPatcher.exe 실행
 3. 설치 모드 완료 후 프로그램 종료
-4. [홈페이지](https://astral.maynutlab.com/)에 접속해 원하는 버전의 자동 패치 실행
+4. [홈페이지](https://astral.maynutlab.com/download)에 접속해 원하는 버전의 자동 패치 실행
 
 ## 프로그램 접근 경로
 

@@ -46,7 +46,7 @@ const PATCH_STEP_TITLES = [
   "결과",
 ] as const;
 
-const INSTALL_STEP_TITLES = ["프로그램 버전 확인", "프로그램 설치", "커스텀 프로토콜 등록", "결과"] as const;
+const INSTALL_STEP_TITLES = ["프로그램 버전 확인", "레거시 데이터 정리", "프로그램 설치", "커스텀 프로토콜 등록", "결과"] as const;
 const REMOVE_STEP_TITLES = ["로컬 다운로드 경로 확인", "제거 규칙 조회", "한글 패치 제거", "결과"] as const;
 
 function isPatchAutoExitCountdown(detail?: string | null): boolean {

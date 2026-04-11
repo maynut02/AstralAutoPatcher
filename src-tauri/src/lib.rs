@@ -242,23 +242,45 @@ fn run_install_workflow(app: &AppHandle) -> Result<()> {
     emit_patch_event(
         app,
         2,
+        "레거시 데이터 정리",
+        "current",
+        "구버전 프로그램을 정리하는 중...",
+        None,
+        20,
+    )?;
+
+    let legacy_cleanup_detail = cleanup_legacy_v1_artifacts();
+
+    emit_patch_event(
+        app,
+        2,
+        "레거시 데이터 정리",
+        "done",
+        "구버전 프로그램 정리 완료",
+        Some(legacy_cleanup_detail),
+        35,
+    )?;
+
+    emit_patch_event(
+        app,
+        3,
         "프로그램 설치",
         "current",
         "프로그램을 설치하는 중...",
         None,
-        20,
+        35,
     )?;
 
     let safe_exe_path = match relocate_runtime_to_safe_path() {
         Ok((exe_path, detail)) => {
             emit_patch_event(
                 app,
-                2,
+                3,
                 "프로그램 설치",
                 "done",
                 "프로그램 설치 완료",
                 Some(detail),
-                60,
+                70,
             )?;
             exe_path
         }
@@ -266,12 +288,12 @@ fn run_install_workflow(app: &AppHandle) -> Result<()> {
             let message = format!("{error:#}");
             emit_patch_event(
                 app,
-                2,
+                3,
                 "프로그램 설치",
                 "error",
                 "프로그램 설치 실패",
                 Some(message.clone()),
-                20,
+                35,
             )?;
             return Err(anyhow!(message));
         }
@@ -279,19 +301,19 @@ fn run_install_workflow(app: &AppHandle) -> Result<()> {
 
     emit_patch_event(
         app,
-        3,
+        4,
         "연결 프로토콜 등록",
         "current",
         "연결 프로토콜을 등록하는 중...",
         None,
-        60,
+        70,
     )?;
 
     match register_astral_protocol(&safe_exe_path) {
         Ok(detail) => {
             emit_patch_event(
                 app,
-                3,
+                4,
                 "연결 프로토콜 등록",
                 "done",
                 "연결 프로토콜 등록 완료",
@@ -303,12 +325,12 @@ fn run_install_workflow(app: &AppHandle) -> Result<()> {
             let message = format!("{error:#}");
             emit_patch_event(
                 app,
-                3,
+                4,
                 "연결 프로토콜 등록",
                 "error",
                 "연결 프로토콜 등록 실패",
                 Some(message.clone()),
-                60,
+                70,
             )?;
             return Err(anyhow!(message));
         }
@@ -316,7 +338,7 @@ fn run_install_workflow(app: &AppHandle) -> Result<()> {
 
     emit_patch_event(
         app,
-        4,
+        5,
         "결과",
         "current",
         "마무리 작업을 진행하는 중...",
@@ -325,7 +347,7 @@ fn run_install_workflow(app: &AppHandle) -> Result<()> {
     )?;
     emit_patch_event(
         app,
-        4,
+        5,
         "결과",
         "done",
         "프로그램 실행 준비 완료",
@@ -1265,6 +1287,93 @@ fn is_semver_newer(latest: &str, current: &str) -> bool {
         (Some(latest), Some(current)) => latest > current,
         _ => false,
     }
+}
+
+#[cfg(target_os = "windows")]
+fn cleanup_legacy_v1_artifacts() -> String {
+    use winreg::enums::*;
+    use winreg::RegKey;
+
+    let mut details = Vec::new();
+
+    match find_steam_install_root() {
+        Ok(steam_root) => {
+            let legacy_exe_path = steam_root
+                .join("steamapps")
+                .join("common")
+                .join("Astral Party")
+                .join("AstralAutoPatcher.exe");
+
+            if legacy_exe_path.exists() {
+                match fs::remove_file(&legacy_exe_path) {
+                    Ok(_) => {
+                        details.push(format!(
+                            "[v1 실행 파일]\n삭제 완료\n{}",
+                            legacy_exe_path.display()
+                        ));
+                    }
+                    Err(error) => {
+                        log_error(format!(
+                            "v1 실행 파일 삭제 실패: {} ({error:#})",
+                            legacy_exe_path.display()
+                        ));
+                        details.push(format!(
+                            "[v1 실행 파일]\n삭제 실패\n{}\n{}",
+                            legacy_exe_path.display(),
+                            error
+                        ));
+                    }
+                }
+            } else {
+                details.push(format!(
+                    "[v1 실행 파일]\n대상이 없어 건너뜀\n{}",
+                    legacy_exe_path.display()
+                ));
+            }
+        }
+        Err(error) => {
+            log_error(format!("Steam 설치 경로 확인 실패(레거시 정리): {error:#}"));
+            details.push(format!(
+                "[v1 실행 파일]\nSteam 경로를 찾지 못해 건너뜀\n{}",
+                error
+            ));
+        }
+    }
+
+    let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
+    match hkcr.open_subkey_with_flags("astral", KEY_READ) {
+        Ok(_) => match hkcr.delete_subkey_all("astral") {
+            Ok(_) => {
+                details.push("[HKEY_CLASSES_ROOT\\astral]\n삭제 완료".to_string());
+            }
+            Err(error) => {
+                log_error(format!("HKEY_CLASSES_ROOT\\astral 삭제 실패: {error:#}"));
+                details.push(format!(
+                    "[HKEY_CLASSES_ROOT\\astral]\n삭제 실패\n{}",
+                    error
+                ));
+            }
+        },
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            details.push("[HKEY_CLASSES_ROOT\\astral]\n대상이 없어 건너뜀".to_string());
+        }
+        Err(error) => {
+            log_error(format!(
+                "HKEY_CLASSES_ROOT\\astral 확인 실패(레거시 정리): {error:#}"
+            ));
+            details.push(format!(
+                "[HKEY_CLASSES_ROOT\\astral]\n확인 실패\n{}",
+                error
+            ));
+        }
+    }
+
+    details.join("\n\n")
+}
+
+#[cfg(not(target_os = "windows"))]
+fn cleanup_legacy_v1_artifacts() -> String {
+    "레거시 데이터 정리는 현재 Windows에서만 지원됩니다.".to_string()
 }
 
 #[cfg(target_os = "windows")]

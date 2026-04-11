@@ -986,25 +986,125 @@ fn find_game_install_dir(target: &str) -> Result<PathBuf> {
 }
 
 fn find_int_steam_game_install_dir() -> Result<PathBuf> {
-    let steam_root = find_steam_install_root()?;
-    let game_dir = steam_root
-        .join("steamapps")
-        .join("common")
-        .join("Astral Party")
-        .join("8vJXnINT")
-        .join("AstralParty_INT_Data")
-        .join("StreamingAssets")
-        .join("aa")
-        .join("StandaloneWindows64");
+    let mut checked_paths = Vec::new();
 
-    if !game_dir.exists() {
-        bail!(
-            "Astral Party 설치 경로를 찾지 못했습니다.\n[확인] {}",
-            game_dir.display()
-        );
+    for steam_library_root in find_steam_library_roots()? {
+        let game_dir = steam_library_root
+            .join("steamapps")
+            .join("common")
+            .join("Astral Party")
+            .join("8vJXnINT")
+            .join("AstralParty_INT_Data")
+            .join("StreamingAssets")
+            .join("aa")
+            .join("StandaloneWindows64");
+
+        if game_dir.exists() {
+            return Ok(game_dir);
+        }
+
+        checked_paths.push(game_dir);
     }
 
-    Ok(game_dir)
+    bail!(
+        "Astral Party 설치 경로를 찾지 못했습니다.\n[확인 대상]\n{}",
+        format_path_list(&checked_paths)
+    )
+}
+
+fn find_steam_library_roots() -> Result<Vec<PathBuf>> {
+    let steam_root = find_steam_install_root()?;
+    let mut roots = Vec::new();
+    let mut seen = HashSet::new();
+
+    push_unique_library_root(&mut roots, &mut seen, steam_root.clone());
+
+    let libraryfolders_path = steam_root.join("steamapps").join("libraryfolders.vdf");
+    match fs::read_to_string(&libraryfolders_path) {
+        Ok(content) => {
+            for line in content.lines() {
+                let values = extract_vdf_quoted_values(line);
+                if values.len() < 2 || !values[0].eq_ignore_ascii_case("path") {
+                    continue;
+                }
+
+                let normalized_path = values[1].replace("\\\\", "\\");
+                if normalized_path.trim().is_empty() {
+                    continue;
+                }
+
+                push_unique_library_root(&mut roots, &mut seen, PathBuf::from(normalized_path));
+            }
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            log_info(format!(
+                "libraryfolders.vdf가 없어 기본 Steam 라이브러리만 사용합니다. {}",
+                libraryfolders_path.display()
+            ));
+        }
+        Err(error) => {
+            log_error(format!(
+                "libraryfolders.vdf 읽기에 실패했습니다. 기본 Steam 라이브러리만 사용합니다. {} ({error:#})",
+                libraryfolders_path.display()
+            ));
+        }
+    }
+
+    Ok(roots)
+}
+
+fn push_unique_library_root(roots: &mut Vec<PathBuf>, seen: &mut HashSet<String>, path: PathBuf) {
+    let normalized_key = path
+        .to_string_lossy()
+        .replace('/', "\\")
+        .trim_end_matches('\\')
+        .to_ascii_lowercase();
+
+    if normalized_key.is_empty() {
+        return;
+    }
+
+    if seen.insert(normalized_key) {
+        roots.push(path);
+    }
+}
+
+fn extract_vdf_quoted_values(line: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+
+    for ch in line.chars() {
+        if ch == '"' {
+            if in_quotes {
+                values.push(current.clone());
+                current.clear();
+                in_quotes = false;
+            } else {
+                in_quotes = true;
+            }
+
+            continue;
+        }
+
+        if in_quotes {
+            current.push(ch);
+        }
+    }
+
+    values
+}
+
+fn format_path_list(paths: &[PathBuf]) -> String {
+    if paths.is_empty() {
+        return "-".to_string();
+    }
+
+    paths
+        .iter()
+        .map(|path| format!("- {}", path.display()))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[cfg(target_os = "windows")]
@@ -1296,40 +1396,51 @@ fn cleanup_legacy_v1_artifacts() -> String {
 
     let mut details = Vec::new();
 
-    match find_steam_install_root() {
-        Ok(steam_root) => {
-            let legacy_exe_path = steam_root
-                .join("steamapps")
-                .join("common")
-                .join("Astral Party")
-                .join("AstralAutoPatcher.exe");
+    match find_steam_library_roots() {
+        Ok(library_roots) => {
+            let mut removed = Vec::new();
+            let mut not_found = Vec::new();
+            let mut failed = Vec::new();
 
-            if legacy_exe_path.exists() {
+            for steam_library_root in library_roots {
+                let legacy_exe_path = steam_library_root
+                    .join("steamapps")
+                    .join("common")
+                    .join("Astral Party")
+                    .join("AstralAutoPatcher.exe");
+
+                if !legacy_exe_path.exists() {
+                    not_found.push(legacy_exe_path);
+                    continue;
+                }
+
                 match fs::remove_file(&legacy_exe_path) {
                     Ok(_) => {
-                        details.push(format!(
-                            "[v1 실행 파일]\n삭제 완료\n{}",
-                            legacy_exe_path.display()
-                        ));
+                        removed.push(legacy_exe_path);
                     }
                     Err(error) => {
                         log_error(format!(
                             "v1 실행 파일 삭제 실패: {} ({error:#})",
                             legacy_exe_path.display()
                         ));
-                        details.push(format!(
-                            "[v1 실행 파일]\n삭제 실패\n{}\n{}",
-                            legacy_exe_path.display(),
-                            error
-                        ));
+                        failed.push(format!("- {} ({})", legacy_exe_path.display(), error));
                     }
                 }
-            } else {
-                details.push(format!(
-                    "[v1 실행 파일]\n대상이 없어 건너뜀\n{}",
-                    legacy_exe_path.display()
-                ));
             }
+
+            details.push(format!(
+                "[v1 실행 파일]\n삭제 완료 {}개\n{}\n미존재 {}개\n{}\n삭제 실패 {}개\n{}",
+                removed.len(),
+                format_path_list(&removed),
+                not_found.len(),
+                format_path_list(&not_found),
+                failed.len(),
+                if failed.is_empty() {
+                    "-".to_string()
+                } else {
+                    failed.join("\n")
+                }
+            ));
         }
         Err(error) => {
             log_error(format!("Steam 설치 경로 확인 실패(레거시 정리): {error:#}"));

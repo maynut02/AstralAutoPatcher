@@ -155,6 +155,13 @@ INT_STEAM    # STEAM 글로벌 버전
 CN_BILIBILI  # 빌리빌리 PC 버전
 ```
 
+## 관련 프로젝트
+- [astralparty-korean-patch](https://github.com/maynut02/astralparty-korean-patch)
+- ~~[AstralParty-KoPatch](https://github.com/maynut02/AstralParty-KoPatch)~~ - 과거 한글패치 배포 저장소
+
+
+
+
 <!-- Link Definitions -->
 [discord-shield]: https://img.shields.io/badge/Discord-업데이트_알림_받기-ECF3FF?style=flat-square&logo=discord&logoColor=ffffff&labelColor=000000
 [discord-link]: https://discord.gg/khYThH3gPD

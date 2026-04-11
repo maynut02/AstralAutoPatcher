@@ -104,7 +104,7 @@
   `C:\Program Files (x86)\Steam\steamapps\common\Astral Party`  
   `C:\Program Files\bilibili Game\AstralParty`
 
-- 게임 리소스 다운로드 경로
+- 게임 리소스 다운로드 경로  
   `C:\Users\%username%\AppData\LocalLow\feimo`
 
 > [!note]

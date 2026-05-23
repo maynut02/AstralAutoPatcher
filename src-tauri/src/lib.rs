@@ -401,6 +401,26 @@ fn run_patch_workflow(app: &AppHandle, target: &str) -> Result<()> {
         10,
     )?;
 
+    if !is_supported_patch_target(target) {
+        let message = format!(
+            "지원하지 않는 패치 대상입니다.\n{}\n지원 대상: {}, {}, {}",
+            target,
+            INT_STEAM_TARGET,
+            CN_STEAM_TARGET,
+            CN_BILIBILI_TARGET
+        );
+        emit_patch_event(
+            app,
+            1,
+            "프로그램 버전 확인",
+            "error",
+            "프로그램 버전 확인 실패",
+            Some(message.clone()),
+            10,
+        )?;
+        return Err(anyhow!(message));
+    }
+
     emit_patch_event(
         app,
         2,
@@ -592,6 +612,26 @@ fn run_patch_workflow(app: &AppHandle, target: &str) -> Result<()> {
 }
 
 fn run_remove_workflow(app: &AppHandle, target: &str) -> Result<()> {
+    if !is_supported_patch_target(target) {
+        let message = format!(
+            "지원하지 않는 제거 대상입니다.\n{}\n지원 대상: {}, {}, {}",
+            target,
+            INT_STEAM_TARGET,
+            CN_STEAM_TARGET,
+            CN_BILIBILI_TARGET
+        );
+        emit_patch_event(
+            app,
+            1,
+            "로컬 다운로드 경로 확인",
+            "error",
+            "로컬 다운로드 경로 확인 실패",
+            Some(message.clone()),
+            0,
+        )?;
+        return Err(anyhow!(message));
+    }
+
     emit_patch_event(
         app,
         1,
@@ -790,16 +830,6 @@ fn resolve_patch_target(raw_target: Option<&str>) -> Result<String> {
                 "패치 실행 대상이 비어 있습니다.\n지원 형식: astral://patch/<TARGET>\nTARGET: INT_STEAM, CN_STEAM, CN_BILIBILI"
             )
         })?;
-
-    if !is_supported_patch_target(&target) {
-        bail!(
-            "지원하지 않는 패치 대상입니다.\n{}\n지원 대상: {}, {}, {}",
-            target,
-            INT_STEAM_TARGET,
-            CN_STEAM_TARGET,
-            CN_BILIBILI_TARGET
-        );
-    }
 
     Ok(target)
 }
@@ -1932,6 +1962,83 @@ fn is_protected_install_path(path: &Path) -> bool {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|_app| {
+            let current_exe = match env::current_exe() {
+                Ok(path) => path,
+                Err(e) => {
+                    log_error(format!("현재 실행 파일 경로를 가져오지 못했습니다: {e:#}"));
+                    return Ok(());
+                }
+            };
+
+            let temp_dir = env::temp_dir();
+            if current_exe.starts_with(&temp_dir) {
+                log_info("임시 폴더에서 실행되었습니다. 백그라운드 업데이트 설치를 시작합니다.");
+                std::thread::spawn(move || {
+                    let safe_root = match resolve_install_dir() {
+                        Ok(path) => path,
+                        Err(e) => {
+                            log_error(format!("설치 디렉터리 확인 실패: {e:#}"));
+                            return;
+                        }
+                    };
+                    let exe_name = match current_exe.file_name() {
+                        Some(name) => name,
+                        None => {
+                            log_error("실행 파일 이름을 확인할 수 없습니다.");
+                            return;
+                        }
+                    };
+                    let safe_exe = safe_root.join(exe_name);
+
+                    // 부모 프로세스가 완전히 종료될 때까지 대기
+                    std::thread::sleep(Duration::from_millis(1000));
+
+                    let mut success = false;
+                    for attempt in 1..=20 {
+                        if let Err(e) = fs::create_dir_all(&safe_root) {
+                            log_error(format!("시도 {attempt}: 설치 경로 생성 실패: {e:#}"));
+                            std::thread::sleep(Duration::from_millis(500));
+                            continue;
+                        }
+
+                        if safe_exe.exists() {
+                            if let Err(e) = fs::remove_file(&safe_exe) {
+                                log_error(format!("시도 {attempt}: 기존 실행 파일 삭제 실패 (잠겨있을 수 있음): {e:#}"));
+                                std::thread::sleep(Duration::from_millis(500));
+                                continue;
+                            }
+                        }
+
+                        match fs::copy(&current_exe, &safe_exe) {
+                            Ok(_) => {
+                                log_info(format!("실행 파일을 설치 경로에 성공적으로 복사했습니다: {}", safe_exe.display()));
+                                success = true;
+                                break;
+                            }
+                            Err(e) => {
+                                log_error(format!("시도 {attempt}: 실행 파일 복사 실패: {e:#}"));
+                                std::thread::sleep(Duration::from_millis(500));
+                            }
+                        }
+                    }
+
+                    if success {
+                        match register_astral_protocol(&safe_exe) {
+                            Ok(detail) => {
+                                log_info(format!("업데이트 후 연결 프로토콜 등록 성공:\n{detail}"));
+                            }
+                            Err(e) => {
+                                log_error(format!("업데이트 후 연결 프로토콜 등록 실패: {e:#}"));
+                            }
+                        }
+                    } else {
+                        log_error("실행 파일 업데이트에 최종 실패했습니다.");
+                    }
+                });
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_launch_context,
             start_patch_workflow,

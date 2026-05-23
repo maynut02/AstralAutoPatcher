@@ -15,6 +15,7 @@ use zip::ZipArchive;
 const PATCH_EVENT_NAME: &str = "patch://event";
 const DEFAULT_PATCH_TARGET: &str = "INT_STEAM";
 const INT_STEAM_TARGET: &str = "INT_STEAM";
+const CN_STEAM_TARGET: &str = "CN_STEAM";
 const CN_BILIBILI_TARGET: &str = "CN_BILIBILI";
 const PATCH_AUTO_EXIT_DELAY_SECS: u64 = 10;
 const RESUME_INSTALL_ARG: &str = "--resume-install";
@@ -25,6 +26,8 @@ const PATCH_BUNDLE_RELEASE_API: &str =
     "https://api.github.com/repos/maynut02/astralparty-korean-patch/releases/latest";
 const INT_STEAM_RULES_API: &str =
     "https://raw.githubusercontent.com/maynut02/astralparty-korean-patch/refs/heads/main/src/astral_patch/patch/rules/int_steam.json";
+const CN_STEAM_RULES_API: &str =
+    "https://raw.githubusercontent.com/maynut02/astralparty-korean-patch/refs/heads/main/src/astral_patch/patch/rules/cn_steam.json";
 const CN_BILIBILI_RULES_API: &str =
     "https://raw.githubusercontent.com/maynut02/astralparty-korean-patch/refs/heads/main/src/astral_patch/patch/rules/cn_bilibili.json";
 
@@ -774,7 +777,7 @@ fn emit_patch_event(
 }
 
 fn is_supported_patch_target(target: &str) -> bool {
-    matches!(target, INT_STEAM_TARGET | CN_BILIBILI_TARGET)
+    matches!(target, INT_STEAM_TARGET | CN_STEAM_TARGET | CN_BILIBILI_TARGET)
 }
 
 fn resolve_patch_target(raw_target: Option<&str>) -> Result<String> {
@@ -784,15 +787,16 @@ fn resolve_patch_target(raw_target: Option<&str>) -> Result<String> {
         .map(|value| value.to_uppercase())
         .ok_or_else(|| {
             anyhow!(
-                "패치 실행 대상이 비어 있습니다.\n지원 형식: astral://patch/<TARGET>\nTARGET: INT_STEAM, CN_BILIBILI"
+                "패치 실행 대상이 비어 있습니다.\n지원 형식: astral://patch/<TARGET>\nTARGET: INT_STEAM, CN_STEAM, CN_BILIBILI"
             )
         })?;
 
     if !is_supported_patch_target(&target) {
         bail!(
-            "지원하지 않는 패치 대상입니다.\n{}\n지원 대상: {}, {}",
+            "지원하지 않는 패치 대상입니다.\n{}\n지원 대상: {}, {}, {}",
             target,
             INT_STEAM_TARGET,
+            CN_STEAM_TARGET,
             CN_BILIBILI_TARGET
         );
     }
@@ -803,6 +807,7 @@ fn resolve_patch_target(raw_target: Option<&str>) -> Result<String> {
 fn resolve_rules_api(target: &str) -> Result<&'static str> {
     match target {
         INT_STEAM_TARGET => Ok(INT_STEAM_RULES_API),
+        CN_STEAM_TARGET => Ok(CN_STEAM_RULES_API),
         CN_BILIBILI_TARGET => Ok(CN_BILIBILI_RULES_API),
         other => bail!("현재 지원하지 않는 대상입니다.\n{other}"),
     }
@@ -965,7 +970,7 @@ fn parse_launch_context() -> Result<LaunchContext> {
         }
 
         bail!(
-            "잘못된 프로토콜 실행 경로입니다.\n{}\n지원 형식: astral://patch/<TARGET> 또는 astral://remove/<TARGET>\nTARGET: INT_STEAM, CN_BILIBILI",
+            "잘못된 프로토콜 실행 경로입니다.\n{}\n지원 형식: astral://patch/<TARGET> 또는 astral://remove/<TARGET>\nTARGET: INT_STEAM, CN_STEAM, CN_BILIBILI",
             arg
         );
     }
@@ -980,6 +985,7 @@ fn parse_launch_context() -> Result<LaunchContext> {
 fn find_game_install_dir(target: &str) -> Result<PathBuf> {
     match target {
         INT_STEAM_TARGET => find_int_steam_game_install_dir(),
+        CN_STEAM_TARGET => find_cn_steam_game_install_dir(),
         CN_BILIBILI_TARGET => find_cn_bilibili_game_install_dir(),
         other => bail!("현재 지원하지 않는 대상입니다.\n{other}"),
     }
@@ -995,6 +1001,33 @@ fn find_int_steam_game_install_dir() -> Result<PathBuf> {
             .join("Astral Party")
             .join("8vJXnINT")
             .join("AstralParty_INT_Data")
+            .join("StreamingAssets")
+            .join("aa")
+            .join("StandaloneWindows64");
+
+        if game_dir.exists() {
+            return Ok(game_dir);
+        }
+
+        checked_paths.push(game_dir);
+    }
+
+    bail!(
+        "Astral Party 설치 경로를 찾지 못했습니다.\n[확인 대상]\n{}",
+        format_path_list(&checked_paths)
+    )
+}
+
+fn find_cn_steam_game_install_dir() -> Result<PathBuf> {
+    let mut checked_paths = Vec::new();
+
+    for steam_library_root in find_steam_library_roots()? {
+        let game_dir = steam_library_root
+            .join("steamapps")
+            .join("common")
+            .join("Astral Party")
+            .join("8vJXn6CN")
+            .join("AstralParty_CN_Data")
             .join("StreamingAssets")
             .join("aa")
             .join("StandaloneWindows64");
@@ -1570,6 +1603,7 @@ fn find_steam_install_root() -> Result<PathBuf> {
 fn find_local_feimo_path(target: &str) -> Result<PathBuf> {
     match target {
         INT_STEAM_TARGET => find_int_steam_local_feimo_path(),
+        CN_STEAM_TARGET => find_cn_steam_local_feimo_path(),
         CN_BILIBILI_TARGET => find_cn_bilibili_local_feimo_path(),
         other => bail!("현재 지원하지 않는 대상입니다.\n{other}"),
     }
@@ -1582,6 +1616,23 @@ fn find_int_steam_local_feimo_path() -> Result<PathBuf> {
         .join("LocalLow")
         .join("feimo")
         .join("AstralParty_INT")
+        .join("com.unity.addressables")
+        .join("AssetBundles");
+
+    if !path.exists() {
+        bail!("경로가 존재하지 않습니다.\n{}", path.display());
+    }
+
+    Ok(path)
+}
+
+fn find_cn_steam_local_feimo_path() -> Result<PathBuf> {
+    let user_profile = env::var("USERPROFILE").context("USERPROFILE 환경 변수를 확인할 수 없습니다.")?;
+    let path = PathBuf::from(user_profile)
+        .join("AppData")
+        .join("LocalLow")
+        .join("feimo")
+        .join("AstralParty_CN")
         .join("com.unity.addressables")
         .join("AssetBundles");
 
@@ -1768,7 +1819,7 @@ fn apply_patch_bundle(
         })?;
 
     match target {
-        INT_STEAM_TARGET | CN_BILIBILI_TARGET => {}
+        INT_STEAM_TARGET | CN_STEAM_TARGET | CN_BILIBILI_TARGET => {}
         other => bail!("현재 지원하지 않는 대상입니다.\n{other}"),
     }
 

@@ -81,6 +81,7 @@
 |버전|구분|모드|실행|
 |----|----|----|----|
 |Steam 글로벌 버전|INT_STEAM|patch, remove|[패치 모드](https://astral.maynutlab.com/autopatch/patch/INT_STEAM) \| [제거 모드](https://astral.maynutlab.com/autopatch/remove/INT_STEAM)|
+|Steam 중국 버전|CN_STEAM|patch, remove|[패치 모드](https://astral.maynutlab.com/autopatch/patch/CN_STEAM) \| [제거 모드](https://astral.maynutlab.com/autopatch/remove/CN_STEAM)|
 |BiliBili PC 버전|CN_BILIBILI|patch, remove|[패치 모드](https://astral.maynutlab.com/autopatch/patch/CN_BILIBILI) \| [제거 모드](https://astral.maynutlab.com/autopatch/remove/CN_BILIBILI)|
 
 ## 사용 방법
@@ -152,6 +153,7 @@ remove   # 게임에 적용되어 있는 한글패치 파일을 제거하는 작
 
 # TARGET
 INT_STEAM    # STEAM 글로벌 버전
+CN_STEAM     # STEAM 중국 버전
 CN_BILIBILI  # 빌리빌리 PC 버전
 ```
 

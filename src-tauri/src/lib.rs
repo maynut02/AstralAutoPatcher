@@ -1025,21 +1025,18 @@ fn find_int_steam_game_install_dir() -> Result<PathBuf> {
     let mut checked_paths = Vec::new();
 
     for steam_library_root in find_steam_library_roots()? {
-        let game_dir = steam_library_root
+        let game_root = steam_library_root
             .join("steamapps")
             .join("common")
             .join("Astral Party")
-            .join("8vJXnINT")
-            .join("AstralParty_INT_Data")
-            .join("StreamingAssets")
-            .join("aa")
-            .join("StandaloneWindows64");
+            .join("8vJXnINT");
+        let data_dir = game_root.join("AstralParty_INT_Data");
 
-        if game_dir.exists() {
-            return Ok(game_dir);
+        if data_dir.exists() {
+            return Ok(game_root);
         }
 
-        checked_paths.push(game_dir);
+        checked_paths.push(data_dir);
     }
 
     bail!(
@@ -1052,21 +1049,18 @@ fn find_cn_steam_game_install_dir() -> Result<PathBuf> {
     let mut checked_paths = Vec::new();
 
     for steam_library_root in find_steam_library_roots()? {
-        let game_dir = steam_library_root
+        let game_root = steam_library_root
             .join("steamapps")
             .join("common")
             .join("Astral Party")
-            .join("8vJXn6CN")
-            .join("AstralParty_CN_Data")
-            .join("StreamingAssets")
-            .join("aa")
-            .join("StandaloneWindows64");
+            .join("8vJXn6CN");
+        let data_dir = game_root.join("AstralParty_CN_Data");
 
-        if game_dir.exists() {
-            return Ok(game_dir);
+        if data_dir.exists() {
+            return Ok(game_root);
         }
 
-        checked_paths.push(game_dir);
+        checked_paths.push(data_dir);
     }
 
     bail!(
@@ -1173,20 +1167,16 @@ fn format_path_list(paths: &[PathBuf]) -> String {
 #[cfg(target_os = "windows")]
 fn find_cn_bilibili_game_install_dir() -> Result<PathBuf> {
     let game_root = find_bilibili_game_install_root()?;
-    let game_dir = game_root
-        .join("吉星派对_Data")
-        .join("StreamingAssets")
-        .join("aa")
-        .join("StandaloneWindows64");
+    let data_dir = game_root.join("吉星派对_Data");
 
-    if !game_dir.exists() {
+    if !data_dir.exists() {
         bail!(
             "bilibili Astral Party 설치 경로를 찾지 못했습니다.\n[확인] {}",
-            game_dir.display()
+            data_dir.display()
         );
     }
 
-    Ok(game_dir)
+    Ok(game_root)
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -1829,37 +1819,41 @@ fn extract_zip_file(zip_path: &Path, output_dir: &Path) -> Result<()> {
 fn apply_patch_bundle(
     target: &str,
     extracted_root: &Path,
-    game_dir: &Path,
+    game_root: &Path,
     local_feimo_dir: &Path,
 ) -> Result<String> {
-    let assetbundles_source =
-        find_first_directory_named(extracted_root, "AssetBundles").ok_or_else(|| {
+    let assetbundles_source = find_first_directory_named(extracted_root, "AssetBundles")
+        .ok_or_else(|| {
             anyhow!(
                 "압축 해제 결과에서 AssetBundles 폴더를 찾지 못했습니다.\n{}",
                 extracted_root.display()
             )
         })?;
 
-    let standalone_source =
-        find_first_directory_named(extracted_root, "StandaloneWindows64").ok_or_else(|| {
+    let data_dir_name = match target {
+        INT_STEAM_TARGET => "AstralParty_INT_Data",
+        CN_STEAM_TARGET => "AstralParty_CN_Data",
+        CN_BILIBILI_TARGET => "吉星派对_Data",
+        other => bail!("현재 지원하지 않는 대상입니다.\n{other}"),
+    };
+    let data_source =
+        find_first_directory_named(extracted_root, data_dir_name).ok_or_else(|| {
             anyhow!(
-                "압축 해제 결과에서 StandaloneWindows64 폴더를 찾지 못했습니다.\n{}",
+                "압축 해제 결과에서 {} 폴더를 찾지 못했습니다.\n{}",
+                data_dir_name,
                 extracted_root.display()
             )
         })?;
-
-    match target {
-        INT_STEAM_TARGET | CN_STEAM_TARGET | CN_BILIBILI_TARGET => {}
-        other => bail!("현재 지원하지 않는 대상입니다.\n{other}"),
-    }
+    let data_target = game_root.join(data_dir_name);
 
     copy_directory_contents(&assetbundles_source, local_feimo_dir)?;
-    copy_directory_contents(&standalone_source, game_dir)?;
+    copy_directory_contents(&data_source, &data_target)?;
 
     Ok(format!(
-        "[AssetBundles]\n{}\n[StandaloneWindows64]\n{}",
+        "[AssetBundles]\n{}\n[{}]\n{}",
         local_feimo_dir.display(),
-        game_dir.display()
+        data_dir_name,
+        data_target.display()
     ))
 }
 

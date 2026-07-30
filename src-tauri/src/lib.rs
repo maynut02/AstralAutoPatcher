@@ -73,6 +73,113 @@ struct PatchRuleTask {
     root_id: Option<String>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct PatchManifest {
+    target: String,
+    release_tag: String,
+    installed_files: Vec<PathBuf>,
+}
+
+fn resolve_app_data_dir() -> PathBuf {
+    if let Ok(local_appdata) = env::var("LOCALAPPDATA") {
+        return PathBuf::from(local_appdata).join("AstralAutoPatcher");
+    }
+    if let Ok(user_profile) = env::var("USERPROFILE") {
+        return PathBuf::from(user_profile)
+            .join("AppData")
+            .join("Local")
+            .join("AstralAutoPatcher");
+    }
+    env::temp_dir().join("AstralAutoPatcher")
+}
+
+fn resolve_manifest_path(target: &str) -> PathBuf {
+    resolve_app_data_dir().join(format!("manifest_{}.json", target.to_ascii_uppercase()))
+}
+
+fn save_manifest(manifest: &PatchManifest) -> Result<()> {
+    let manifest_path = resolve_manifest_path(&manifest.target);
+    if let Some(parent) = manifest_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("매니페스트 디렉터리 생성에 실패했습니다.\n{}", parent.display()))?;
+    }
+    let json_str = serde_json::to_string_pretty(manifest)
+        .context("매니페스트 직렬화에 실패했습니다.")?;
+    fs::write(&manifest_path, json_str)
+        .with_context(|| format!("매니페스트 파일 저장에 실패했습니다.\n{}", manifest_path.display()))?;
+    Ok(())
+}
+
+fn load_manifest(target: &str) -> Result<Option<PatchManifest>> {
+    let manifest_path = resolve_manifest_path(target);
+    if !manifest_path.exists() {
+        return Ok(None);
+    }
+    let content = fs::read_to_string(&manifest_path)
+        .with_context(|| format!("매니페스트 읽기에 실패했습니다.\n{}", manifest_path.display()))?;
+    let manifest: PatchManifest = serde_json::from_str(&content)
+        .with_context(|| format!("매니페스트 파싱에 실패했습니다.\n{}", manifest_path.display()))?;
+    Ok(Some(manifest))
+}
+
+fn remove_manifest(target: &str) {
+    let manifest_path = resolve_manifest_path(target);
+    let _ = fs::remove_file(manifest_path);
+}
+
+fn remove_manifest_files(manifest: &PatchManifest) -> Result<String> {
+    let mut removed_count = 0;
+    let mut not_found_count = 0;
+    let mut dirs_checked: HashSet<PathBuf> = HashSet::new();
+
+    for file_path in &manifest.installed_files {
+        if file_path.exists() {
+            if let Err(err) = fs::remove_file(file_path) {
+                log_error(format!(
+                    "기록된 파일 삭제 실패: {}\n{err:#}",
+                    file_path.display()
+                ));
+            } else {
+                removed_count += 1;
+            }
+        } else {
+            not_found_count += 1;
+        }
+
+        if let Some(parent) = file_path.parent() {
+            dirs_checked.insert(parent.to_path_buf());
+        }
+    }
+
+    for mut dir in dirs_checked {
+        while dir.exists() {
+            let is_empty = match fs::read_dir(&dir) {
+                Ok(mut entries) => entries.next().is_none(),
+                Err(_) => false,
+            };
+            if is_empty {
+                let parent = dir.parent().map(|p| p.to_path_buf());
+                let _ = fs::remove_dir(&dir);
+                if let Some(p) = parent {
+                    dir = p;
+                    continue;
+                }
+            }
+            break;
+        }
+    }
+
+    remove_manifest(&manifest.target);
+
+    Ok(format!(
+        "[패치 설치 기록 기반 제거 완료]\n버전: {}\n총 설치 파일: {}개\n삭제 완료: {}개\n미존재: {}개",
+        manifest.release_tag,
+        manifest.installed_files.len(),
+        removed_count,
+        not_found_count
+    ))
+}
+
 struct PreparedPatch {
     release_tag: String,
     asset_name: String,
@@ -548,7 +655,7 @@ fn run_patch_workflow(app: &AppHandle, target: &str) -> Result<()> {
         None,
         70,
     )?;
-    match apply_patch_bundle(target, &prepared_patch.extract_dir, &game_dir, &local_feimo_dir) {
+    match apply_patch_bundle(target, &prepared_patch.extract_dir, &game_dir, &local_feimo_dir, &prepared_patch.release_tag) {
         Ok(detail) => {
             emit_patch_event(
                 app,
@@ -630,6 +737,92 @@ fn run_remove_workflow(app: &AppHandle, target: &str) -> Result<()> {
             0,
         )?;
         return Err(anyhow!(message));
+    }
+
+    if let Ok(Some(manifest)) = load_manifest(target) {
+        if !manifest.installed_files.is_empty() {
+            emit_patch_event(
+                app,
+                1,
+                "패치 제거 기록 확인",
+                "done",
+                "설치 기록을 확인했습니다.",
+                Some(format!("기록된 파일 {}개", manifest.installed_files.len())),
+                30,
+            )?;
+            emit_patch_event(
+                app,
+                2,
+                "한글 패치 제거",
+                "current",
+                "기록된 패치 파일을 제거하는 중...",
+                None,
+                50,
+            )?;
+
+            let removal_detail = match remove_manifest_files(&manifest) {
+                Ok(detail) => {
+                    emit_patch_event(
+                        app,
+                        2,
+                        "한글 패치 제거",
+                        "done",
+                        "한글 패치 제거 완료",
+                        Some(detail.clone()),
+                        90,
+                    )?;
+                    detail
+                }
+                Err(error) => {
+                    let message = format!("{error:#}");
+                    emit_patch_event(
+                        app,
+                        2,
+                        "한글 패치 제거",
+                        "error",
+                        "한글 패치 제거 실패",
+                        Some(message.clone()),
+                        50,
+                    )?;
+                    return Err(anyhow!(message));
+                }
+            };
+
+            emit_patch_event(
+                app,
+                3,
+                "결과",
+                "current",
+                "마무리 작업을 진행하는 중...",
+                None,
+                90,
+            )?;
+
+            for remaining_secs in (1..=PATCH_AUTO_EXIT_DELAY_SECS).rev() {
+                emit_patch_event(
+                    app,
+                    3,
+                    "결과",
+                    "done",
+                    "제거 모드 완료",
+                    Some(format!(
+                        "{}\n\n{}초 후 프로그램이 자동으로 종료됩니다.",
+                        removal_detail, remaining_secs
+                    )),
+                    100,
+                )?;
+
+                std::thread::sleep(Duration::from_secs(1));
+            }
+
+            log_info(format!(
+                "제거 작업이 완료되어 {}초 후 프로그램을 자동 종료합니다.",
+                PATCH_AUTO_EXIT_DELAY_SECS
+            ));
+            app.exit(0);
+
+            return Ok(());
+        }
     }
 
     emit_patch_event(
@@ -843,8 +1036,22 @@ fn resolve_rules_api(target: &str) -> Result<&'static str> {
     }
 }
 
-fn fetch_remove_root_ids(target: &str) -> Result<Vec<String>> {
-    let api_url = resolve_rules_api(target)?;
+fn parse_tag_name(tag_name: &str) -> Option<(String, String)> {
+    let cleaned = tag_name
+        .trim()
+        .trim_start_matches(|c| c == 'v' || c == 'V');
+    let version_part = cleaned.split('-').next()?;
+    let parts: Vec<&str> = version_part.split('.').collect();
+    if parts.len() == 4 {
+        let game_ver = format!("{}.{}.{}", parts[0], parts[1], parts[2]);
+        let build_num = parts[3].to_string();
+        Some((game_ver, build_num))
+    } else {
+        None
+    }
+}
+
+fn fetch_remove_root_ids_from_url(api_url: &str) -> Result<Vec<String>> {
     let client = reqwest::blocking::Client::new();
 
     let rules = client
@@ -892,6 +1099,24 @@ fn fetch_remove_root_ids(target: &str) -> Result<Vec<String>> {
     }
 
     Ok(root_ids)
+}
+
+fn fetch_remove_root_ids(target: &str) -> Result<Vec<String>> {
+    if let Ok(release) = fetch_latest_release() {
+        if let Some((game_ver, build_num)) = parse_tag_name(&release.tag_name) {
+            let dynamic_url = format!(
+                "https://raw.githubusercontent.com/maynut02/astralparty-korean-patch/refs/heads/workflow/output_get/{target}/{game_ver}/{build_num}/patches.json"
+            );
+            log_info(format!("신규 제거 규칙 URL 시도: {dynamic_url}"));
+            if let Ok(ids) = fetch_remove_root_ids_from_url(&dynamic_url) {
+                return Ok(ids);
+            }
+        }
+    }
+
+    let default_url = resolve_rules_api(target)?;
+    log_info(format!("기본 제거 규칙 URL 시도: {default_url}"));
+    fetch_remove_root_ids_from_url(default_url)
 }
 
 fn format_root_ids(root_ids: &[String]) -> String {
@@ -1821,6 +2046,7 @@ fn apply_patch_bundle(
     extracted_root: &Path,
     game_root: &Path,
     local_feimo_dir: &Path,
+    release_tag: &str,
 ) -> Result<String> {
     let assetbundles_source = find_first_directory_named(extracted_root, "AssetBundles")
         .ok_or_else(|| {
@@ -1846,8 +2072,20 @@ fn apply_patch_bundle(
         })?;
     let data_target = game_root.join(data_dir_name);
 
-    copy_directory_contents(&assetbundles_source, local_feimo_dir)?;
-    copy_directory_contents(&data_source, &data_target)?;
+    let mut installed_files = Vec::new();
+
+    copy_directory_contents_and_collect(&assetbundles_source, local_feimo_dir, &mut installed_files)?;
+    copy_directory_contents_and_collect(&data_source, &data_target, &mut installed_files)?;
+
+    let manifest = PatchManifest {
+        target: target.to_string(),
+        release_tag: release_tag.to_string(),
+        installed_files,
+    };
+
+    if let Err(err) = save_manifest(&manifest) {
+        log_error(format!("매니페스트 저장 경고: {err:#}"));
+    }
 
     Ok(format!(
         "[AssetBundles]\n{}\n[{}]\n{}",
@@ -1891,6 +2129,15 @@ fn find_first_directory_named(root: &Path, name: &str) -> Option<PathBuf> {
 }
 
 fn copy_directory_contents(source: &Path, target: &Path) -> Result<()> {
+    let mut unused = Vec::new();
+    copy_directory_contents_and_collect(source, target, &mut unused)
+}
+
+fn copy_directory_contents_and_collect(
+    source: &Path,
+    target: &Path,
+    collected: &mut Vec<PathBuf>,
+) -> Result<()> {
     if !source.exists() {
         bail!("원본 디렉터리가 존재하지 않습니다.\n{}", source.display());
     }
@@ -1909,7 +2156,7 @@ fn copy_directory_contents(source: &Path, target: &Path) -> Result<()> {
             .with_context(|| format!("파일 유형 확인에 실패했습니다.\n{}", source_path.display()))?;
 
         if file_type.is_dir() {
-            copy_directory_contents(&source_path, &target_path)?;
+            copy_directory_contents_and_collect(&source_path, &target_path, collected)?;
             continue;
         }
 
@@ -1939,6 +2186,8 @@ fn copy_directory_contents(source: &Path, target: &Path) -> Result<()> {
 
             return Err(error).context(message);
         }
+
+        collected.push(target_path);
     }
 
     Ok(())

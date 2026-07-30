@@ -127,12 +127,17 @@ fn remove_manifest(target: &str) {
     let _ = fs::remove_file(manifest_path);
 }
 
-fn remove_manifest_files(manifest: &PatchManifest) -> Result<String> {
+fn remove_manifest_files(manifest: &PatchManifest, local_feimo_dir: &Path) -> Result<String> {
     let mut removed_count = 0;
     let mut not_found_count = 0;
     let mut dirs_checked: HashSet<PathBuf> = HashSet::new();
 
     for file_path in &manifest.installed_files {
+        // 게임 데이터 폴더는 훼손되지 않도록 AssetBundles(local_feimo_dir) 경로 하위의 패치 파일만 선택적으로 삭제합니다.
+        if !file_path.starts_with(local_feimo_dir) {
+            continue;
+        }
+
         if file_path.exists() {
             if let Err(err) = fs::remove_file(file_path) {
                 log_error(format!(
@@ -147,12 +152,14 @@ fn remove_manifest_files(manifest: &PatchManifest) -> Result<String> {
         }
 
         if let Some(parent) = file_path.parent() {
-            dirs_checked.insert(parent.to_path_buf());
+            if parent.starts_with(local_feimo_dir) && parent != local_feimo_dir {
+                dirs_checked.insert(parent.to_path_buf());
+            }
         }
     }
 
     for mut dir in dirs_checked {
-        while dir.exists() {
+        while dir.exists() && dir.starts_with(local_feimo_dir) && dir != local_feimo_dir {
             let is_empty = match fs::read_dir(&dir) {
                 Ok(mut entries) => entries.next().is_none(),
                 Err(_) => false,
@@ -172,9 +179,8 @@ fn remove_manifest_files(manifest: &PatchManifest) -> Result<String> {
     remove_manifest(&manifest.target);
 
     Ok(format!(
-        "[패치 설치 기록 기반 제거 완료]\n버전: {}\n총 설치 파일: {}개\n삭제 완료: {}개\n미존재: {}개",
+        "[패치 설치 기록 기반 제거 완료]\n버전: {}\nAssetBundles 삭제 완료: {}개\n미존재: {}개",
         manifest.release_tag,
-        manifest.installed_files.len(),
         removed_count,
         not_found_count
     ))
@@ -739,17 +745,46 @@ fn run_remove_workflow(app: &AppHandle, target: &str) -> Result<()> {
         return Err(anyhow!(message));
     }
 
-    if let Ok(Some(manifest)) = load_manifest(target) {
-        if !manifest.installed_files.is_empty() {
+    emit_patch_event(
+        app,
+        1,
+        "로컬 다운로드 경로 확인",
+        "current",
+        "로컬 다운로드 경로를 확인하는 중...",
+        None,
+        0,
+    )?;
+
+    let local_feimo_dir = match find_local_feimo_path(target) {
+        Ok(found) => {
             emit_patch_event(
                 app,
                 1,
-                "패치 제거 기록 확인",
+                "로컬 다운로드 경로 확인",
                 "done",
-                "설치 기록을 확인했습니다.",
-                Some(format!("기록된 파일 {}개", manifest.installed_files.len())),
+                "로컬 다운로드 경로 확인 완료",
+                Some(found.display().to_string()),
                 30,
             )?;
+            found
+        }
+        Err(error) => {
+            let message = format!("{error:#}");
+            emit_patch_event(
+                app,
+                1,
+                "로컬 다운로드 경로 확인",
+                "error",
+                "로컬 다운로드 경로 확인 실패",
+                Some(message.clone()),
+                0,
+            )?;
+            return Err(anyhow!(message));
+        }
+    };
+
+    if let Ok(Some(manifest)) = load_manifest(target) {
+        if !manifest.installed_files.is_empty() {
             emit_patch_event(
                 app,
                 2,
@@ -760,7 +795,7 @@ fn run_remove_workflow(app: &AppHandle, target: &str) -> Result<()> {
                 50,
             )?;
 
-            let removal_detail = match remove_manifest_files(&manifest) {
+            let removal_detail = match remove_manifest_files(&manifest, &local_feimo_dir) {
                 Ok(detail) => {
                     emit_patch_event(
                         app,
@@ -824,44 +859,6 @@ fn run_remove_workflow(app: &AppHandle, target: &str) -> Result<()> {
             return Ok(());
         }
     }
-
-    emit_patch_event(
-        app,
-        1,
-        "로컬 다운로드 경로 확인",
-        "current",
-        "로컬 다운로드 경로를 확인하는 중...",
-        None,
-        0,
-    )?;
-
-    let local_feimo_dir = match find_local_feimo_path(target) {
-        Ok(found) => {
-            emit_patch_event(
-                app,
-                1,
-                "로컬 다운로드 경로 확인",
-                "done",
-                "로컬 다운로드 경로 확인 완료",
-                Some(found.display().to_string()),
-                30,
-            )?;
-            found
-        }
-        Err(error) => {
-            let message = format!("{error:#}");
-            emit_patch_event(
-                app,
-                1,
-                "로컬 다운로드 경로 확인",
-                "error",
-                "로컬 다운로드 경로 확인 실패",
-                Some(message.clone()),
-                0,
-            )?;
-            return Err(anyhow!(message));
-        }
-    };
 
     emit_patch_event(
         app,
@@ -2128,6 +2125,7 @@ fn find_first_directory_named(root: &Path, name: &str) -> Option<PathBuf> {
     None
 }
 
+#[allow(dead_code)]
 fn copy_directory_contents(source: &Path, target: &Path) -> Result<()> {
     let mut unused = Vec::new();
     copy_directory_contents_and_collect(source, target, &mut unused)
